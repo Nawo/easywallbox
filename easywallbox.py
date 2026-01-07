@@ -9,6 +9,7 @@ import mqttmap
 import time
 import random
 import logging
+
 FORMAT = ('%(asctime)-15s %(threadName)-15s '
           '%(levelname)-8s %(module)-15s:%(lineno)-8s %(message)s')
 logging.basicConfig(format=FORMAT)
@@ -17,18 +18,26 @@ log.setLevel(logging.INFO)
 
 mqttClient = None
 
+def get_required_env(key):
+    """Get a required environment variable or exit if not set."""
+    value = os.getenv(key)
+    if value is None or value.strip() == "":
+        log.error(f"CRITICAL ERROR: Missing required environment variable: {key}")
+        sys.exit(1)
+    return value
+
 class EasyWallbox:
+    WALLBOX_RX = "a9da6040-0823-4995-94ec-9ce41ca28833"
+    WALLBOX_SERVICE = "331a36f5-2459-45ea-9d95-6142f0c4b307"
+    WALLBOX_ST = "75A9F022-AF03-4E41-B4BC-9DE90A47D50B"
+    WALLBOX_TX = "a73e9a10-628f-4494-a099-12efaf72258f"
+    WALLBOX_UUID ="0A8C44F5-F80D-8141-6618-2564F1881650"
 
-    WALLBOX_ADDRESS = os.getenv('WALLBOX_ADDRESS', '8C:F6:81:AD:B8:3E')
-    WALLBOX_PIN = os.getenv('WALLBOX_PIN', '9844')
+    mqtt_topic = get_required_env('MQTT_TOPIC')
 
-    WALLBOX_RX = "a9da6040-0823-4995-94ec-9ce41ca28833";
-    WALLBOX_SERVICE = "331a36f5-2459-45ea-9d95-6142f0c4b307";
-    WALLBOX_ST = "75A9F022-AF03-4E41-B4BC-9DE90A47D50B";
-    WALLBOX_TX = "a73e9a10-628f-4494-a099-12efaf72258f";
-    WALLBOX_UUID ="0A8C44F5-F80D-8141-6618-2564F1881650";
-
-    def __init__(self, queue):
+    def __init__(self, queue, address, pin):
+        self.WALLBOX_ADDRESS = address
+        self.WALLBOX_PIN = pin
         self._client = BleakClient(self.WALLBOX_ADDRESS)
         self._queue = queue
 
@@ -42,23 +51,26 @@ class EasyWallbox:
         log.info("ble write: %s", data)
 
     async def connect(self):
-        log.info("Connecting BLE...")
-        await self._client.connect()
-        log.info(f"Connected on {self.WALLBOX_ADDRESS}: {self._client.is_connected}")
+        log.info(f"Connecting BLE to {self.WALLBOX_ADDRESS}...")
+        try:
+            await self._client.connect()
+            log.info(f"Connected: {self._client.is_connected}")
+        except Exception as e:
+            log.error(f"Failed to connect to Wallbox: {e}")
+            sys.exit(1)
 
     async def pair(self):
         log.info("Pairing BLE...")
         paired = sys.platform == "darwin" or await self._client.pair(protection_level=2)
         log.info(f"Paired: {paired}")
+        log.info("Skipping system pairing (protocol auth only).")
+        return True
 
     async def start_notify(self):
-        await self._client.start_notify(self.WALLBOX_TX, self._notification_handler_rx) #TX NOTIFY
+        await self._client.start_notify(self.WALLBOX_TX, self._notification_handler_rx)
         log.info("TX NOTIFY STARTED")
-        await self._client.start_notify(self.WALLBOX_ST, self._notification_handler_st) #ST NOTIFY (CANAL BUSMODE)
+        await self._client.start_notify(self.WALLBOX_ST, self._notification_handler_st)
         log.info("ST NOTIFY STARTED")
-
-
-    
 
     _notification_buffer_rx = ""
     def _notification_handler_rx(self, sender, data):
@@ -68,121 +80,132 @@ class EasyWallbox:
             log.info("_notification RX received: %s", self._notification_buffer_rx)
 
             if (client):
-                client.publish(topic="easywallbox/message", payload=self._notification_buffer_rx, qos=1, retain=False)
-            #self._queue.put_nowait(self._notification_buffer_rx)
-            self._notification_buffer_rx = "";
-
-        #print(data.decode('utf-8'), end='', file=sys.stdout, flush=True)
-        #self._queue.put_nowait(data.decode('utf-8'))
+                client.publish(topic=mqtt_topic+"/message", payload=self._notification_buffer_rx, qos=1, retain=False)
+            self._notification_buffer_rx = ""
 
     _notification_buffer_st = ""
     def _notification_handler_st(self, sender, data):
-        
         self._notification_buffer_st += data.decode()
         if "\n" in self._notification_buffer_st:
             log.info("_notification ST received: %s", self._notification_buffer_st)
-            #self._queue.put_nowait(self._notification_buffer_st)
-            self._notification_buffer_st = "";
-
-        #print(data.decode('utf-8'), end='', file=sys.stdout, flush=True)
-        #self._queue.put_nowait(data.decode('utf-8'))
+            self._notification_buffer_st = ""
 
 async def main():
     global client
-    mqtt_host = os.getenv('MQTT_HOST', '192.168.2.70')
-    mqtt_port = os.getenv('MQTT_PORT', 1883)
-    mqtt_username = os.getenv('MQTT_USERNAME', "")
-    mqtt_password = os.getenv('MQTT_PASSWORD', "")
-
     
+    log.info("--- Starting EasyWallbox Controller ---")
+
+    wb_address = get_required_env('WALLBOX_ADDRESS')
+    wb_pin = get_required_env('WALLBOX_PIN')
+    mqtt_host = get_required_env('MQTT_HOST')
+    mqtt_topic = get_required_env('MQTT_TOPIC')
+    
+    try:
+        mqtt_port = int(get_required_env('MQTT_PORT'))
+    except ValueError:
+        log.error("CRITICAL ERROR: MQTT_PORT must be an integer!")
+        sys.exit(1)
+
+    mqtt_username = get_required_env('MQTT_USERNAME', "")
+    mqtt_password = get_required_env('MQTT_PASSWORD', "")
+
+    log.info(f"Configuration loaded. Wallbox: {wb_address}, MQTT: {mqtt_host}:{mqtt_port}")
+
     queue = asyncio.Queue()
 
-    eb = EasyWallbox(queue)
+    eb = EasyWallbox(queue, wb_address, wb_pin)
+    
     await eb.connect()
     await eb.pair()
     await eb.start_notify()
 
-    log.info("BLE AUTH START: %s", eb.WALLBOX_PIN)
+    log.info("BLE AUTH START with PIN: %s", eb.WALLBOX_PIN)
     await eb.write(commands.authBle(eb.WALLBOX_PIN))
 
-    # The callback for when the client receives a CONNACK response from the server.
+    # MQTT Callbacks
     def on_connect(client, userdata, flags, rc):
-        print("Connected to MQTT Broker with result code "+str(rc))
-        client.connected_flag=True
-        log.info("Connected to MQTT Broker!")
-        # Subscribing in on_connect() means that if we lose the connection and
-        # reconnect then subscriptions will be renewed.
-        client.subscribe([("easywallbox/dpm",0), ("easywallbox/charge",0), ("easywallbox/limit",0), ("easywallbox/read", 0)])
+        if rc == 0:
+            print("Connected to MQTT Broker!")
+            client.connected_flag = True
+            log.info("Connected to MQTT Broker!")
+            client.subscribe([(mqtt_topic+"/dpm",0), (mqtt_topic+"/charge",0), (mqtt_topic+"/limit",0), (mqtt_topic+"/read", 0)])
+        else:
+            log.error(f"Failed to connect to MQTT, return code {rc}")
 
-    # The callback for when a PUBLISH message is received from the server.
     def on_message(client, userdata, msg):
-        #print(msg.topic+" "+str(msg.payload))
-        #queue.put_nowait(msg.payload)
-
         topic = msg.topic
-        message = msg.payload.decode()
+        try:
+            message = msg.payload.decode()
+        except:
+            message = str(msg.payload)
+            
         log.info(f"Message received [{topic}]: {message}")
         ble_command = None
 
         try:
-            if("/" in message):
-                msx = message.split("/") #limit/10
-                #TODO: Check if msx contains valid values
-                ble_command = mqttmap.MQTT2BLE[topic][msx[0]+"/"](msx[1])
+            if "/" in message:
+                msx = message.split("/") 
+                if topic in mqttmap.MQTT2BLE and (msx[0]+"/") in mqttmap.MQTT2BLE[topic]:
+                    ble_command = mqttmap.MQTT2BLE[topic][msx[0]+"/"](msx[1])
             else:
-                ble_command = mqttmap.MQTT2BLE[topic][message]
-        except Exception:
+                if topic in mqttmap.MQTT2BLE and message in mqttmap.MQTT2BLE[topic]:
+                    ble_command = mqttmap.MQTT2BLE[topic][message]
+        except Exception as e:
+            log.warning(f"Error parsing MQTT message: {e}")
             pass
 
-        print(ble_command)
-
-        if(ble_command != None):
+        if ble_command:
             queue.put_nowait(ble_command)
 
 
-    mqtt.Client.connected_flag=False
+    mqtt.Client.connected_flag = False
+    
+    try:
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "mqtt_easywallbox")
+    except AttributeError:
+        client = mqtt.Client("mqtt_easywallbox")
 
-    client = mqtt.Client("mqtt_easywallbox")
     client.on_connect = on_connect
     client.on_message = on_message
-    client.loop_start()
-    client.username_pw_set(username=mqtt_username,password=mqtt_password)
-    client.connect(mqtt_host, mqtt_port, 60)
-
-    while not client.connected_flag: #wait in loop
-        log.info("...")
-        time.sleep(1)
     
+    if mqtt_username and mqtt_password:
+        client.username_pw_set(username=mqtt_username, password=mqtt_password)
+    
+    try:
+        client.connect(mqtt_host, mqtt_port, 60)
+        client.loop_start()
+    except Exception as e:
+        log.error(f"Could not connect to MQTT Broker: {e}")
+        sys.exit(1)
 
-    loop = asyncio.get_event_loop()
-
-    #def read_line():
-    #    line = sys.stdin.readline()
-    #    if line:
-    #        queue.put_nowait(line)
-
-    #task = loop.add_reader(sys.stdin.fileno(), read_line)
-
-
+    wait_count = 0
+    while not client.connected_flag:
+        log.info("Waiting for MQTT connection...")
+        time.sleep(1)
+        wait_count += 1
+        if wait_count > 30:
+            log.error("MQTT Connection timeout. Exiting.")
+            sys.exit(1)
     
     while True:
-        if queue.empty():
-           pass
-        else:
-            #item = await queue.get()
+        if not queue.empty():
             item = queue.get_nowait()
-            log.info("Consuming ...")
             if item is None:
-                log.info("nothing to consume!")
                 break
-            log.info(f"Consuming item {item}...")
-            await eb.write(item)
-        await asyncio.sleep(1)
+            log.info(f"Sending BLE command: {item.hex() if isinstance(item, (bytes, bytearray)) else item}")
+            try:
+                await eb.write(item)
+            except Exception as e:
+                log.error(f"Error writing to BLE: {e}")
+        await asyncio.sleep(0.1)
 
 try:
     asyncio.run(main())
 except asyncio.CancelledError:
     pass
-#except Exception as e:
-#    print(str(e), file=sys.stderr, flush=True)
-#    sys.exit(1)
+except KeyboardInterrupt:
+    log.info("Stopping...")
+    sys.exit(0)
+except Exception as e:
+    log.error(f"Fatal error: {e}")
+    sys.exit(1)
