@@ -4,14 +4,20 @@ import sys
 import traceback
 import json
 import os
-import time
 import logging
 from bleak import BleakClient, BleakError
 import paho.mqtt.client as mqtt
 import commands
 import mqttmap
-# Zakładam, że utils.py istnieje i ma get_required_env
-from utils import get_required_env
+
+
+def get_required_env(key):
+    """Get a required environment variable or exit if not set."""
+    value = os.getenv(key)
+    if value is None or value.strip() == "":
+        log.error(f"CRITICAL ERROR: Missing required environment variable: {key}")
+        sys.exit(1)
+    return value
 
 # --- CONFIGURATION ---
 FORMAT = ('%(asctime)-15s %(threadName)-15s '
