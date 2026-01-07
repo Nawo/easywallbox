@@ -106,8 +106,8 @@ async def main():
         log.error("CRITICAL ERROR: MQTT_PORT must be an integer!")
         sys.exit(1)
 
-    mqtt_username = get_required_env('MQTT_USERNAME', "")
-    mqtt_password = get_required_env('MQTT_PASSWORD', "")
+    mqtt_username = get_required_env('MQTT_USERNAME')
+    mqtt_password = get_required_env('MQTT_PASSWORD')
 
     log.info(f"Configuration loaded. Wallbox: {wb_address}, MQTT: {mqtt_host}:{mqtt_port}")
 
