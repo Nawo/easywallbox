@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
-
 from bleak import BleakClient
 import commands
 # Zakładam, że utils.py istnieje i ma get_required_env
-from easywallbox.utils import log
+from utils import log
 
 class EasyWallbox:
 
