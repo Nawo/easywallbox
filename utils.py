@@ -1,7 +1,6 @@
 import logging
 import os
 import sys
-from easywallbox.easywallbox import log
 
 # --- CONFIGURATION ---
 FORMAT = ('%(asctime)-15s %(threadName)-15s '
