@@ -1,5 +1,5 @@
 import blemap as bmap
-from utils import get_required_env
+from easywallbox import get_required_env
 
 mqtt_topic = get_required_env('MQTT_TOPIC')
 
