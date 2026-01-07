@@ -116,7 +116,7 @@ async def main():
     eb = EasyWallbox(queue, wb_address, wb_pin)
     
     await eb.connect()
-    await eb.pair()
+    #await eb.pair()
     await eb.start_notify()
 
     log.info("BLE AUTH START with PIN: %s", eb.WALLBOX_PIN)
