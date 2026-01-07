@@ -57,7 +57,7 @@ class EasyWallbox:
             data = bytearray(data, 'utf-8')
             
         try:
-            await self._client.write_gatt_char(self.WALLBOX_RX, data, response=True)
+            await self._client.write_gatt_char(self.WALLBOX_RX, data, response=False)
             log.info("BLE write success")
         except Exception as e:
             log.error(f"BLE Write Failed! Error: {e}")
