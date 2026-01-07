@@ -142,7 +142,7 @@ async def main():
 
     mqtt.Client.connected_flag=False
 
-    client = mqtt.Client("mqtt-easywallbox")
+    client = mqtt.Client("mqtt_easywallbox")
     client.on_connect = on_connect
     client.on_message = on_message
     client.loop_start()
