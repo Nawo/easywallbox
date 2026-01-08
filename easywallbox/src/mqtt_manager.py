@@ -81,6 +81,10 @@ class MQTTManager:
         # Helper to publish config
         async def pub_config(component, object_id, config):
             topic = f"homeassistant/{component}/easywallbox/{object_id}/config"
+            
+            # Add availability to all entities
+            config["availability_topic"] = f"{base_topic}/availability"
+            
             import json
             await self._client.publish(topic, json.dumps(config), retain=True)
 

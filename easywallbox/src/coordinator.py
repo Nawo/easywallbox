@@ -72,6 +72,11 @@ class Coordinator:
     async def reconnect_ble(self):
         """Force BLE reconnect."""
         # This is a bit hacky, ideally BLEManager handles this
+        
+        # Publish availability (Offline)
+        await self._mqtt.publish("availability", "offline")
+        await self._mqtt.publish("sensor/connectivity/state", "OFF")
+        
         if self._ble._client:
             await self._ble._client.disconnect()
 
@@ -98,6 +103,13 @@ class Coordinator:
         """Handle incoming BLE notifications."""
         log.info(f"Coordinator received BLE notify: {data.strip()}")
         self._last_data = data.strip() # Store last data
+        
+        # Publish availability (Online)
+        await self._mqtt.publish("availability", "online")
+        
+        # Publish connectivity state
+        await self._mqtt.publish("sensor/connectivity/state", "ON")
+
         # Forward to MQTT
         await self._mqtt.publish("message", data)
 
