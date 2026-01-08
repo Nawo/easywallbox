@@ -1,2 +1,2 @@
+aiomqtt
 bleak
-paho-mqtt
