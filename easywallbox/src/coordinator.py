@@ -62,7 +62,7 @@ class Coordinator:
     async def set_limit(self, limit_type: str, value: str):
         """Set limit via BLE."""
         cmd = None
-        val = int(value) * 10
+        val = int(float(value))
         if limit_type == "dpm":
             cmd = WALLBOX_EPROM["SET_DPM_LIMIT"].format(limit=str(val))
         elif limit_type == "safe":
@@ -119,9 +119,9 @@ class Coordinator:
                 if payload == "user": return WALLBOX_EPROM["GET_USER_LIMIT"]
                 if "/" in payload:
                     cmd, val = payload.split("/", 1)
-                    if cmd == "dpm": return WALLBOX_EPROM["SET_DPM_LIMIT"].format(limit=str(int(val)*10))
-                    if cmd == "safe": return WALLBOX_EPROM["SET_SAFE_LIMIT"].format(limit=str(int(val)*10))
-                    if cmd == "user": return WALLBOX_EPROM["SET_USER_LIMIT"].format(limit=str(int(val)*10))
+                    if cmd == "dpm": return WALLBOX_EPROM["SET_DPM_LIMIT"].format(limit=str(int(val)))
+                    if cmd == "safe": return WALLBOX_EPROM["SET_SAFE_LIMIT"].format(limit=str(int(val)))
+                    if cmd == "user": return WALLBOX_EPROM["SET_USER_LIMIT"].format(limit=str(int(val)))
 
             # /read
             elif subtopic == "read":

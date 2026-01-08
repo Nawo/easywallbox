@@ -29,12 +29,16 @@ class MQTTManager:
                     self._client = client
                     log.info("Connected to MQTT Broker!")
                     
+                    # Publish Discovery Config
+                    await self.publish_discovery()
+                    
                     # Subscribe to topics
                     topics = [
                         f"{self._config.mqtt_topic}/dpm",
                         f"{self._config.mqtt_topic}/charge",
                         f"{self._config.mqtt_topic}/limit",
                         f"{self._config.mqtt_topic}/read",
+                        f"{self._config.mqtt_topic}/set/#", # Listen for HA commands
                     ]
                     for topic in topics:
                         await client.subscribe(topic)
@@ -46,8 +50,6 @@ class MQTTManager:
                         payload = message.payload.decode() if isinstance(message.payload, bytes) else str(message.payload)
                         log.debug(f"MQTT Received [{topic}]: {payload}")
                         
-                        # Dispatch to callback (fire and forget or await?)
-                        # We'll run it in the loop to ensure order, but catch exceptions
                         try:
                             if self._on_message_callback:
                                 await self._on_message_callback(topic, payload)
@@ -62,6 +64,71 @@ class MQTTManager:
                 log.error(f"Unexpected MQTT error: {e}")
                 self._client = None
                 await asyncio.sleep(5)
+
+    async def publish_discovery(self):
+        """Publish Home Assistant MQTT Discovery payloads."""
+        if not self._client: return
+        
+        device_info = {
+            "identifiers": [self._config.wallbox_address],
+            "name": "EasyWallbox",
+            "manufacturer": "Free2Move",
+            "model": "EasyWallbox",
+        }
+        
+        base_topic = self._config.mqtt_topic
+        
+        # Helper to publish config
+        async def pub_config(component, object_id, config):
+            topic = f"homeassistant/{component}/easywallbox/{object_id}/config"
+            import json
+            await self._client.publish(topic, json.dumps(config), retain=True)
+
+        # 1. Connectivity (Binary Sensor)
+        await pub_config("binary_sensor", "connectivity", {
+            "name": "Connectivity",
+            "device_class": "connectivity",
+            "state_topic": f"{base_topic}/sensor/connectivity/state",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_connectivity",
+            "device": device_info
+        })
+
+        # 2. DPM Switch
+        await pub_config("switch", "dpm", {
+            "name": "DPM",
+            "icon": "mdi:flash-auto",
+            "state_topic": f"{base_topic}/switch/dpm/state",
+            "command_topic": f"{base_topic}/set/dpm",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_dpm",
+            "device": device_info
+        })
+
+        # 3. Limits (Numbers)
+        for limit in ["dpm", "safe", "user"]:
+            await pub_config("number", f"{limit}_limit", {
+                "name": f"{limit.upper()} Limit",
+                "icon": "mdi:current-ac",
+                "state_topic": f"{base_topic}/number/{limit}_limit/state",
+                "command_topic": f"{base_topic}/set/{limit}_limit",
+                "min": 0,
+                "max": 7.2,
+                "step": 0.1,
+                "unit_of_measurement": "A",
+                "unique_id": f"easywallbox_{self._config.wallbox_address}_{limit}_limit",
+                "device": device_info
+            })
+
+        # 4. Refresh Button
+        await pub_config("button", "refresh", {
+            "name": "Refresh Data",
+            "icon": "mdi:refresh",
+            "command_topic": f"{base_topic}/set/refresh",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_refresh",
+            "device": device_info
+        })
+        
+        log.info("Published MQTT Discovery configs")
+
 
     async def publish(self, subtopic: str, payload: str):
         """Publish a message to MQTT."""
