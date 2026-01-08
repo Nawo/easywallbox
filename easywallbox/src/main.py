@@ -5,6 +5,7 @@ import sys
 import signal
 from .config import load_config
 from .coordinator import Coordinator
+from .web_server import WebServer
 
 # Logging configuration
 FORMAT = ('%(asctime)-15s %(threadName)-15s '
@@ -23,6 +24,7 @@ async def main():
         sys.exit(1)
 
     coordinator = Coordinator(config)
+    web_server = WebServer(coordinator)
 
     # Handle signals
     loop = asyncio.get_running_loop()
@@ -32,15 +34,20 @@ async def main():
         log.info("Signal received, stopping...")
         stop_event.set()
         coordinator.stop()
+        # web_server.stop() # handled by loop cleanup usually
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, signal_handler)
 
-    # Start coordinator
+    # Start coordinator and web server
     coordinator_task = asyncio.create_task(coordinator.start())
+    web_server_task = asyncio.create_task(web_server.start())
 
     # Wait for stop signal
     await stop_event.wait()
+    
+    # Cleanup
+    await web_server.stop()
     
     # Wait for coordinator to finish (if it returns)
     # In this design, coordinator.start() runs forever until stopped

@@ -30,3 +30,5 @@ host_network: true
 privileged:
   - NET_ADMIN
 host_dbus: true
+ingress: true
+ingress_port: 8099

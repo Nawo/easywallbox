@@ -1,2 +1,4 @@
 aiomqtt
 bleak
+aiohttp
+jinja2

@@ -25,30 +25,35 @@ Control and monitor your Free2Move EasyWallbox directly from Home Assistant via 
 
 ## Configuration
 
-Open your camera / QR Code reader and point it to the sticker. You will get something like:
+1.  **How to get PIN code**
+    - Open your camera / QR Code reader and point it to the sticker. You will get something like:
 
-BT:N:2911AA00101728;M:F2ME.EWE08APEFXX;D:eWB01728;P:001234;A:9844;;
+    - BT:N:2911AA00101728;M:F2ME.EWE08APEFXX;D:eWB01728;P:001234;A:9844;;
+    - Let's decode it:
+    - N: Serial 2911AA00101728
+    - M: Part Number F2ME.EWE08APEFXX
+    - D: BT Name eWB01728
+    - P: Device Pin 001234
+    - A: BLE Pin 9844
 
-Let's decode it:
+    We need the A: value, in my case it's "9844"
 
-N: Serial 2911AA00101728
-M: Part Number F2ME.EWE08APEFXX
-D: BT Name eWB01728
-P: Device Pin 001234
-A: BLE Pin 9844
+2.  **How to get MAC address**
+    - Go to terminal and use command `bluetoothctl`
+    - Search device witch name is "eWB01728" or something similar
+    - Copy mac address from the list
+    - Close bluetoothctl with `exit` command 
 
-We need the A: value, in my case it's "9844" (save it for later)
-
-Configure the add-on in the **Configuration** tab:
+3.  **Configure the add-on in the **Configuration** tab**
 
 | Option | Description | Default |
 | :--- | :--- | :--- |
-| `wallbox_address` | **Required**. The MAC address of your Wallbox (e.g., `00:11:22:33:44:55`). | `""` |
-| `wallbox_pin` | **Required**. The Bluetooth PIN code found on the sticker (A value)(e.g., `9844`). |
+| `wallbox_address` | **Required**. The MAC address of your Wallbox
+| `wallbox_pin` | **Required**. The Bluetooth PIN code found on the sticker (A value). |
 | `mqtt_host` | MQTT Broker hostname or IP. | `"core-mosquitto"` |
 | `mqtt_port` | MQTT Broker port. | `1883` |
-| `mqtt_username` | MQTT Username. | `""` |
-| `mqtt_password` | MQTT Password. | `""` |
+| `mqtt_username` | MQTT Username.
+| `mqtt_password` | MQTT Password.
 | `mqtt_topic` | Base MQTT topic. | `"easywallbox"` |
 
 > **Note**: This add-on requires Bluetooth access. It uses the host's Bluetooth adapter (`hci0`).

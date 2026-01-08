@@ -13,6 +13,7 @@ class Coordinator:
         self._config = config
         self._mqtt = MQTTManager(config, self._on_mqtt_message)
         self._ble = BLEManager(config, self._on_ble_notify)
+        self._last_data = ""
 
     async def start(self):
         """Start the coordinator and managers."""
@@ -44,9 +45,43 @@ class Coordinator:
             except Exception as e:
                 log.error(f"Failed to forward to BLE: {e}")
 
+    def get_status(self):
+        """Get current status for dashboard."""
+        return {
+            "ble_connected": self._ble._client.is_connected if self._ble._client else False,
+            "mqtt_connected": self._mqtt._client is not None, # Simplified check
+            "last_data": self._last_data
+        }
+
+    async def reconnect_ble(self):
+        """Force BLE reconnect."""
+        # This is a bit hacky, ideally BLEManager handles this
+        if self._ble._client:
+            await self._ble._client.disconnect()
+
+    async def set_limit(self, limit_type: str, value: str):
+        """Set limit via BLE."""
+        cmd = None
+        val = int(value) * 10
+        if limit_type == "dpm":
+            cmd = WALLBOX_EPROM["SET_DPM_LIMIT"].format(limit=str(val))
+        elif limit_type == "safe":
+            cmd = WALLBOX_EPROM["SET_SAFE_LIMIT"].format(limit=str(val))
+        elif limit_type == "user":
+            cmd = WALLBOX_EPROM["SET_USER_LIMIT"].format(limit=str(val))
+            
+        if cmd:
+            await self._ble.write(cmd)
+
+    async def refresh_data(self):
+        """Request fresh data."""
+        await self._ble.write(WALLBOX_EPROM["READ_SETTINGS"])
+        await self._ble.write(WALLBOX_EPROM["READ_APP_DATA"])
+
     async def _on_ble_notify(self, data: str):
         """Handle incoming BLE notifications."""
         log.info(f"Coordinator received BLE notify: {data.strip()}")
+        self._last_data = data.strip() # Store last data
         # Forward to MQTT
         await self._mqtt.publish("message", data)
 
