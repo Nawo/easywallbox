@@ -97,18 +97,8 @@ class MQTTManager:
             "device": device_info
         })
 
-        # 2. DPM Switch
-        await pub_config("switch", "dpm", {
-            "name": "DPM",
-            "icon": "mdi:flash-auto",
-            "state_topic": f"{base_topic}/switch/dpm/state",
-            "command_topic": f"{base_topic}/set/dpm",
-            "unique_id": f"easywallbox_{self._config.wallbox_address}_dpm",
-            "device": device_info
-        })
-
-        # 3. Limits (Numbers)
-        for limit in ["dpm", "safe", "user"]:
+        # 2. Limits (Numbers)
+        for limit in ["safe", "user"]:
             await pub_config("number", f"{limit}_limit", {
                 "name": f"{limit.upper()} Limit",
                 "icon": "mdi:current-ac",
@@ -117,19 +107,10 @@ class MQTTManager:
                 "min": 0,
                 "max": 7.2,
                 "step": 0.1,
-                "unit_of_measurement": "A",
+                "unit_of_measurement": "kW",
                 "unique_id": f"easywallbox_{self._config.wallbox_address}_{limit}_limit",
                 "device": device_info
             })
-
-        # 4. Refresh Button
-        await pub_config("button", "refresh", {
-            "name": "Refresh Data",
-            "icon": "mdi:refresh",
-            "command_topic": f"{base_topic}/set/refresh",
-            "unique_id": f"easywallbox_{self._config.wallbox_address}_refresh",
-            "device": device_info
-        })
         
         log.info("Published MQTT Discovery configs")
 

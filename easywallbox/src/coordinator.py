@@ -12,7 +12,8 @@ class Coordinator:
     def __init__(self, config: Config):
         self._config = config
         self._mqtt = MQTTManager(config, self._on_mqtt_message)
-        self._ble = BLEManager(config, self._on_ble_notify)
+        self._mqtt = MQTTManager(config, self._on_mqtt_message)
+        self._ble = BLEManager(config, self._on_ble_notify, self._on_ble_connection_change)
         self._last_data = ""
 
     async def start(self):
@@ -69,16 +70,14 @@ class Coordinator:
             "last_data": self._last_data
         }
 
-    async def reconnect_ble(self):
-        """Force BLE reconnect."""
-        # This is a bit hacky, ideally BLEManager handles this
+    async def _on_ble_connection_change(self, connected: bool):
+        """Handle BLE connection state changes."""
+        state = "online" if connected else "offline"
+        log.info(f"BLE Connection State Changed: {state}")
         
-        # Publish availability (Offline)
-        await self._mqtt.publish("availability", "offline")
-        await self._mqtt.publish("sensor/connectivity/state", "OFF")
-        
-        if self._ble._client:
-            await self._ble._client.disconnect()
+        # Publish availability
+        await self._mqtt.publish("availability", state)
+        await self._mqtt.publish("sensor/connectivity/state", "ON" if connected else "OFF")
 
     async def set_limit(self, limit_type: str, value: str):
         """Set limit via BLE."""
@@ -104,12 +103,6 @@ class Coordinator:
         log.info(f"Coordinator received BLE notify: {data.strip()}")
         self._last_data = data.strip() # Store last data
         
-        # Publish availability (Online)
-        await self._mqtt.publish("availability", "online")
-        
-        # Publish connectivity state
-        await self._mqtt.publish("sensor/connectivity/state", "ON")
-
         # Forward to MQTT
         await self._mqtt.publish("message", data)
 

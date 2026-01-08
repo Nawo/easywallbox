@@ -12,9 +12,10 @@ from .const import (
 log = logging.getLogger(__name__)
 
 class BLEManager:
-    def __init__(self, config: Config, on_notify_callback: Callable[[str], None]):
+    def __init__(self, config: Config, on_notify_callback: Callable[[str], None], on_connection_change_callback: Optional[Callable[[bool], None]] = None):
         self._config = config
         self._on_notify_callback = on_notify_callback
+        self._on_connection_change_callback = on_connection_change_callback
         self._client: Optional[BleakClient] = None
         self._running = False
         self._notification_buffer_rx = ""
@@ -30,6 +31,9 @@ class BLEManager:
                 
                 await self._client.connect()
                 log.info(f"Connected to Wallbox: {self._client.is_connected}")
+                
+                if self._on_connection_change_callback:
+                    await self._on_connection_change_callback(True)
 
                 # Protocol Authentication
                 await self._authenticate()
@@ -49,6 +53,9 @@ class BLEManager:
             except Exception as e:
                 log.error(f"Unexpected BLE error: {e}")
             finally:
+                if self._on_connection_change_callback:
+                    await self._on_connection_change_callback(False)
+                    
                 if self._client and self._client.is_connected:
                     try:
                         await self._client.disconnect()
