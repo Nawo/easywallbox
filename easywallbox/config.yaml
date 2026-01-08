@@ -1,7 +1,7 @@
 name: "EasyWallbox"
 description: "Free2Move Wallbox Integration"
 author: "Roman Nawrot"
-version: "1.0.0"
+version: "1.0.1"
 slug: "easywallbox"
 init: false
 arch:
@@ -29,5 +29,4 @@ schema:
 host_network: true
 privileged:
   - NET_ADMIN
-devices:
-  - /dev/hci0
+host_dbus: true
