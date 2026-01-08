@@ -1,7 +1,7 @@
 name: "EasyWallbox"
 description: "Free2Move Wallbox Integration"
 author: "Roman Nawrot"
-version: "1.0.3"
+version: "1.0.4"
 slug: "easywallbox"
 init: false
 arch:

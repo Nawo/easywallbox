@@ -27,7 +27,7 @@ class Coordinator:
 
     async def _on_mqtt_message(self, topic: str, payload: str):
         """Handle incoming MQTT messages."""
-        log.info(f"Coordinator received MQTT: {topic} -> {payload}")
+        log.debug(f"Coordinator received MQTT: {topic} -> {payload}")
         
         # Determine relative topic
         # topic is full topic e.g. "easywallbox/charge"
@@ -36,6 +36,22 @@ class Coordinator:
             return
         
         subtopic = topic[len(self._config.mqtt_topic):].lstrip('/')
+        
+        # Handle HA Discovery Commands
+        if subtopic.startswith("set/"):
+            cmd = subtopic[4:] # remove "set/"
+            if cmd == "dpm":
+                await self._ble.write(WALLBOX_EPROM["SET_DPM_ON"] if payload == "ON" else WALLBOX_EPROM["SET_DPM_OFF"])
+                # Optimistic state update
+                await self._mqtt.publish("switch/dpm/state", payload)
+            elif cmd == "refresh":
+                await self.refresh_data()
+            elif cmd.endswith("_limit"):
+                limit_type = cmd.replace("_limit", "")
+                await self.set_limit(limit_type, payload)
+                # Optimistic state update
+                await self._mqtt.publish(f"number/{cmd}/state", payload)
+            return
         
         command = self._map_mqtt_to_ble(subtopic, payload)
         if command:
