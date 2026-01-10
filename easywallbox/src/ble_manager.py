@@ -84,7 +84,7 @@ class BLEManager:
         
         try:
             log.debug(f"Writing to BLE: {data}")
-            await self._client.write_gatt_char(WALLBOX_RX, data, response=False)
+            await self._client.write_gatt_char(WALLBOX_RX, data, response=True)
         except Exception as e:
             log.error(f"BLE Write Failed: {e}")
             raise
