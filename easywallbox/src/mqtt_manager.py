@@ -112,6 +112,23 @@ class MQTTManager:
                 "device": device_info
             })
         
+        # 3. Charging Control (Buttons)
+        await pub_config("button", "start_charge", {
+            "name": "Start Charging",
+            "icon": "mdi:ev-station",
+            "command_topic": f"{base_topic}/set/start_charge",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_start_charge",
+            "device": device_info
+        })
+        
+        await pub_config("button", "stop_charge", {
+            "name": "Stop Charging",
+            "icon": "mdi:stop-circle",
+            "command_topic": f"{base_topic}/set/stop_charge",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_stop_charge",
+            "device": device_info
+        })
+        
         log.info("Published MQTT Discovery configs")
 
 

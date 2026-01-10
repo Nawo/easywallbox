@@ -65,6 +65,12 @@ class MQTTBLEMapper:
             # Return first command; caller should send both
             return WALLBOX_EPROM["READ_SETTINGS"]
         
+        # Charging Control
+        elif command == "start_charge":
+            return WALLBOX_COMMANDS["START_CHARGE"].format(delay=0)
+        elif command == "stop_charge":
+            return WALLBOX_COMMANDS["STOP_CHARGE"].format(delay=0)
+        
         return None
     
     @staticmethod

@@ -49,21 +49,34 @@ class Coordinator:
                     for cmd in self._mapper.get_refresh_commands()[1:]:  # Skip first (already sent)
                         await self._ble.write(cmd)
                 
-                # Optimistic state update for HA Discovery commands
+                # Read-after-write: verify actual state from Wallbox
                 if subtopic.startswith("set/"):
-                    await self._publish_state_update(subtopic, payload)
+                    await self._read_after_write(subtopic)
                     
             except Exception as e:
                 log.error(f"Failed to forward to BLE: {e}")
 
-    async def _publish_state_update(self, subtopic: str, payload: str):
-        """Publish optimistic state updates for HA Discovery commands."""
+    async def _read_after_write(self, subtopic: str):
+        """Read actual value from Wallbox after writing."""
         cmd = subtopic[4:]  # Remove "set/"
         
-        if cmd == "dpm":
-            await self._mqtt.publish("switch/dpm/state", payload)
-        elif cmd.endswith("_limit"):
-            await self._mqtt.publish(f"number/{cmd}/state", payload)
+        # Map write commands to their corresponding read commands
+        read_command = None
+        
+        if cmd.endswith("_limit"):
+            limit_type = cmd.replace("_limit", "")
+            if limit_type == "user":
+                read_command = WALLBOX_EPROM["GET_USER_LIMIT"]
+            elif limit_type == "safe":
+                read_command = WALLBOX_EPROM["GET_SAFE_LIMIT"]
+            elif limit_type == "dpm":
+                read_command = WALLBOX_EPROM["GET_DPM_LIMIT"]
+        elif cmd == "dpm":
+            read_command = WALLBOX_EPROM["GET_DPM_STATUS"]
+        
+        if read_command:
+            log.info(f"Reading back state: {read_command.strip()}")
+            await self._ble.write(read_command)
 
     async def _on_ble_connection_change(self, connected: bool):
         """Handle BLE connection state changes."""
@@ -79,8 +92,44 @@ class Coordinator:
         log.info(f"Coordinator received BLE notify: {data.strip()}")
         self._last_data = data.strip()
         
-        # Forward to MQTT
+        # Parse response and update HA states
+        await self._parse_and_update_state(data.strip())
+        
+        # Forward raw data to MQTT
         await self._mqtt.publish("message", data)
+    
+    async def _parse_and_update_state(self, data: str):
+        """Parse Wallbox response and update Home Assistant entity states."""
+        try:
+            # Example responses:
+            # $EEP,READ,IDX,174,160  (User limit = 16.0A)
+            # $EEP,READ,IDX,172,320  (Safe limit = 32.0A)
+            # $DPM,STATUS,0          (DPM OFF)
+            # $DPM,STATUS,1          (DPM ON)
+            
+            if data.startswith("$EEP,READ,IDX,"):
+                parts = data.split(",")
+                if len(parts) >= 5:
+                    idx = parts[3]
+                    value = int(parts[4].strip())
+                    
+                    # Map index to entity
+                    if idx == "174":  # User limit
+                        await self._mqtt.publish("number/user_limit/state", str(value))
+                    elif idx == "172":  # Safe limit
+                        await self._mqtt.publish("number/safe_limit/state", str(value))
+                    elif idx == "156":  # DPM limit (example, verify actual index)
+                        await self._mqtt.publish("number/dpm_limit/state", str(value))
+            
+            elif data.startswith("$DPM,STATUS,"):
+                parts = data.split(",")
+                if len(parts) >= 3:
+                    status = parts[2].strip()
+                    state = "ON" if status == "1" else "OFF"
+                    await self._mqtt.publish("switch/dpm/state", state)
+        
+        except Exception as e:
+            log.warning(f"Failed to parse response: {e}")
 
     def stop(self):
         """Stop the coordinator."""
