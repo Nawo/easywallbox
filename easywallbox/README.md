@@ -10,6 +10,83 @@ Control and monitor your Free2Move EasyWallbox directly from Home Assistant via 
 - **Charging Session** management (Start/Stop/Delay).
 - **Automatic Reconnection** for both BLE and MQTT.
 - **Home Assistant Add-on** ready.
+- **MQTT Auto-Discovery** - automatic entity creation in Home Assistant.
+- **Availability Tracking** - entities disabled when connection lost.
+
+## Architecture & Information Flow
+
+The add-on consists of several modular components:
+
+```
+Home Assistant UI
+       ↓ (MQTT Discovery)
+    MQTT Broker
+       ↓ (easywallbox/set/*)
+  MQTTManager ←→ Coordinator ←→ BLEManager
+       ↓              ↓              ↓
+  (publish)    (mqtt_ble_mapper)  (Bleak)
+                                    ↓
+                               Wallbox (BLE)
+```
+
+### Component Roles
+
+1. **BLEManager** (`ble_manager.py`):
+   - Manages Bluetooth Low Energy connection to the Wallbox
+   - Handles authentication and auto-reconnection (every 5s on failure)
+   - Listens for notifications from the Wallbox
+   - Notifies Coordinator of connection state changes
+
+2. **MQTTManager** (`mqtt_manager.py`):
+   - Connects to MQTT broker
+   - Publishes Home Assistant Discovery configs on startup
+   - Subscribes to command topics
+   - Forwards MQTT messages to Coordinator
+
+3. **MQTTBLEMapper** (`mqtt_ble_mapper.py`):
+   - **Central mapping table** for all MQTT → BLE commands
+   - Supports both Home Assistant Discovery topics (`set/*`) and legacy topics
+   - Example: `set/user_limit` + `"16"` → `$EEP,WRITE,IDX,174,16\n`
+
+4. **Coordinator** (`coordinator.py`):
+   - **Orchestrates** communication between MQTT and BLE
+   - Routes MQTT commands → Mapper → BLE
+   - Routes BLE notifications → MQTT
+   - Manages availability state (`online`/`offline`)
+
+### Data Flow Examples
+
+#### Setting a Limit (Home Assistant → Wallbox)
+```
+1. User slides "User Limit" to 16A in HA UI
+2. HA publishes: easywallbox/set/user_limit → "16"
+3. MQTTManager receives message → Coordinator
+4. Coordinator calls Mapper.map_command("set/user_limit", "16")
+5. Mapper returns: "$EEP,WRITE,IDX,174,16\n"
+6. Coordinator sends to BLEManager
+7. BLEManager writes to Wallbox via Bluetooth
+8. Coordinator publishes optimistic state: easywallbox/number/user_limit/state → "16"
+```
+
+#### Receiving Data (Wallbox → Home Assistant)
+```
+1. Wallbox sends BLE notification (e.g., voltage reading)
+2. BLEManager receives → calls Coordinator._on_ble_notify()
+3. Coordinator publishes to: easywallbox/message
+4. Home Assistant receives and displays in MQTT integration
+```
+
+#### Availability Tracking
+```
+1. BLEManager connects → calls Coordinator._on_ble_connection_change(True)
+2. Coordinator publishes: easywallbox/availability → "online"
+3. HA marks all entities as available (controls enabled)
+---
+1. BLE disconnects → calls Coordinator._on_ble_connection_change(False)
+2. Coordinator publishes: easywallbox/availability → "offline"
+3. HA marks all entities as unavailable (controls greyed out)
+```
+
 
 ## Installation
 

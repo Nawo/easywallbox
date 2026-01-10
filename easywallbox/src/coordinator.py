@@ -4,7 +4,7 @@ import logging
 from .config import Config
 from .mqtt_manager import MQTTManager
 from .ble_manager import BLEManager
-from .const import WALLBOX_EPROM, WALLBOX_COMMANDS, WALLBOX_BLE
+from .mqtt_ble_mapper import MQTTBLEMapper
 
 log = logging.getLogger(__name__)
 
@@ -12,9 +12,9 @@ class Coordinator:
     def __init__(self, config: Config):
         self._config = config
         self._mqtt = MQTTManager(config, self._on_mqtt_message)
-        self._mqtt = MQTTManager(config, self._on_mqtt_message)
         self._ble = BLEManager(config, self._on_ble_notify, self._on_ble_connection_change)
         self._last_data = ""
+        self._mapper = MQTTBLEMapper()
 
     async def start(self):
         """Start the coordinator and managers."""
@@ -30,45 +30,40 @@ class Coordinator:
         """Handle incoming MQTT messages."""
         log.debug(f"Coordinator received MQTT: {topic} -> {payload}")
         
-        # Determine relative topic
-        # topic is full topic e.g. "easywallbox/charge"
-        # we want "charge"
+        # Extract subtopic
         if not topic.startswith(self._config.mqtt_topic):
             return
         
         subtopic = topic[len(self._config.mqtt_topic):].lstrip('/')
         
-        # Handle HA Discovery Commands
-        if subtopic.startswith("set/"):
-            cmd = subtopic[4:] # remove "set/"
-            if cmd == "dpm":
-                await self._ble.write(WALLBOX_EPROM["SET_DPM_ON"] if payload == "ON" else WALLBOX_EPROM["SET_DPM_OFF"])
-                # Optimistic state update
-                await self._mqtt.publish("switch/dpm/state", payload)
-            elif cmd == "refresh":
-                await self.refresh_data()
-            elif cmd.endswith("_limit"):
-                limit_type = cmd.replace("_limit", "")
-                await self.set_limit(limit_type, payload)
-                # Optimistic state update
-                await self._mqtt.publish(f"number/{cmd}/state", payload)
-            return
+        # Map MQTT to BLE command
+        command = self._mapper.map_command(subtopic, payload)
         
-        command = self._map_mqtt_to_ble(subtopic, payload)
         if command:
             log.info(f"Forwarding to BLE: {command.strip()}")
             try:
                 await self._ble.write(command)
+                
+                # Handle refresh (requires multiple commands)
+                if self._mapper.needs_multiple_commands(subtopic, payload):
+                    for cmd in self._mapper.get_refresh_commands()[1:]:  # Skip first (already sent)
+                        await self._ble.write(cmd)
+                
+                # Optimistic state update for HA Discovery commands
+                if subtopic.startswith("set/"):
+                    await self._publish_state_update(subtopic, payload)
+                    
             except Exception as e:
                 log.error(f"Failed to forward to BLE: {e}")
 
-    def get_status(self):
-        """Get current status for dashboard."""
-        return {
-            "ble_connected": self._ble._client.is_connected if self._ble._client else False,
-            "mqtt_connected": self._mqtt._client is not None, # Simplified check
-            "last_data": self._last_data
-        }
+    async def _publish_state_update(self, subtopic: str, payload: str):
+        """Publish optimistic state updates for HA Discovery commands."""
+        cmd = subtopic[4:]  # Remove "set/"
+        
+        if cmd == "dpm":
+            await self._mqtt.publish("switch/dpm/state", payload)
+        elif cmd.endswith("_limit"):
+            await self._mqtt.publish(f"number/{cmd}/state", payload)
 
     async def _on_ble_connection_change(self, connected: bool):
         """Handle BLE connection state changes."""
@@ -79,83 +74,13 @@ class Coordinator:
         await self._mqtt.publish("availability", state)
         await self._mqtt.publish("sensor/connectivity/state", "ON" if connected else "OFF")
 
-    async def set_limit(self, limit_type: str, value: str):
-        """Set limit via BLE."""
-        cmd = None
-        val = int(float(value))
-        if limit_type == "dpm":
-            cmd = WALLBOX_EPROM["SET_DPM_LIMIT"].format(limit=str(val))
-        elif limit_type == "safe":
-            cmd = WALLBOX_EPROM["SET_SAFE_LIMIT"].format(limit=str(val))
-        elif limit_type == "user":
-            cmd = WALLBOX_EPROM["SET_USER_LIMIT"].format(limit=str(val))
-            
-        if cmd:
-            await self._ble.write(cmd)
-
-    async def refresh_data(self):
-        """Request fresh data."""
-        await self._ble.write(WALLBOX_EPROM["READ_SETTINGS"])
-        await self._ble.write(WALLBOX_EPROM["READ_APP_DATA"])
-
     async def _on_ble_notify(self, data: str):
         """Handle incoming BLE notifications."""
         log.info(f"Coordinator received BLE notify: {data.strip()}")
-        self._last_data = data.strip() # Store last data
+        self._last_data = data.strip()
         
         # Forward to MQTT
         await self._mqtt.publish("message", data)
-
-    def _map_mqtt_to_ble(self, subtopic: str, payload: str) -> str | None:
-        """Map MQTT topic and payload to BLE command."""
-        try:
-            # Logic ported from mqttmap.py
-            
-            # /dpm
-            if subtopic == "dpm":
-                if payload == "on": return WALLBOX_EPROM["SET_DPM_ON"]
-                if payload == "off": return WALLBOX_EPROM["SET_DPM_OFF"]
-                if payload == "limit": return WALLBOX_EPROM["GET_DPM_LIMIT"]
-                if payload == "status": return WALLBOX_EPROM["GET_DPM_STATUS"]
-                # Handle "limit/X" format if payload contains slash? 
-                # Original code handled split on payload if it contained "/"
-                if "/" in payload:
-                    cmd, val = payload.split("/", 1)
-                    if cmd == "limit":
-                        return WALLBOX_EPROM["SET_DPM_LIMIT"].format(limit=str(int(val)*10))
-
-            # /charge
-            elif subtopic == "charge":
-                if payload == "start": return WALLBOX_COMMANDS["START_CHARGE"].format(delay=0)
-                if payload == "stop": return WALLBOX_COMMANDS["STOP_CHARGE"].format(delay=0)
-                if "/" in payload:
-                    cmd, val = payload.split("/", 1)
-                    if cmd == "start": return WALLBOX_COMMANDS["START_CHARGE"].format(delay=val)
-                    if cmd == "stop": return WALLBOX_COMMANDS["STOP_CHARGE"].format(delay=val)
-
-            # /limit
-            elif subtopic == "limit":
-                if payload == "dpm": return WALLBOX_EPROM["GET_DPM_LIMIT"]
-                if payload == "safe": return WALLBOX_EPROM["GET_SAFE_LIMIT"]
-                if payload == "user": return WALLBOX_EPROM["GET_USER_LIMIT"]
-                if "/" in payload:
-                    cmd, val = payload.split("/", 1)
-                    if cmd == "dpm": return WALLBOX_EPROM["SET_DPM_LIMIT"].format(limit=str(int(val)))
-                    if cmd == "safe": return WALLBOX_EPROM["SET_SAFE_LIMIT"].format(limit=str(int(val)))
-                    if cmd == "user": return WALLBOX_EPROM["SET_USER_LIMIT"].format(limit=str(int(val)))
-
-            # /read
-            elif subtopic == "read":
-                if payload == "manufacturing": return WALLBOX_EPROM["READ_MANUFACTURING"]
-                if payload == "settings": return WALLBOX_EPROM["READ_SETTINGS"]
-                if payload == "app_data": return WALLBOX_EPROM["READ_APP_DATA"]
-                if payload == "hw_settings": return WALLBOX_EPROM["READ_HW_SETTINGS"]
-                if payload == "voltage": return WALLBOX_EPROM["READ_SUPPLY_VOLTAGE"]
-
-        except Exception as e:
-            log.warning(f"Error mapping MQTT to BLE: {e}")
-        
-        return None
 
     def stop(self):
         """Stop the coordinator."""
