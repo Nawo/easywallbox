@@ -5,6 +5,7 @@ from .config import Config
 from .mqtt_manager import MQTTManager
 from .ble_manager import BLEManager
 from .mqtt_ble_mapper import MQTTBLEMapper
+from .const import WALLBOX_EPROM
 
 log = logging.getLogger(__name__)
 
