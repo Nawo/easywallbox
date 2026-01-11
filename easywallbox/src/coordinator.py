@@ -5,7 +5,9 @@ from .config import Config
 from .mqtt_manager import MQTTManager
 from .ble_manager import BLEManager
 from .mqtt_ble_mapper import MQTTBLEMapper
-from .const import WALLBOX_EPROM
+from .bluetoothCommands import (
+    getUserLimit, getSafeLimit, getDpmLimit, getDpmStatus
+)
 
 log = logging.getLogger(__name__)
 
@@ -32,10 +34,11 @@ class Coordinator:
         log.debug(f"Coordinator received MQTT: {topic} -> {payload}")
         
         # Extract subtopic
-        if not topic.startswith(self._config.mqtt_topic):
+        base_topic = "easywallbox"
+        if not topic.startswith(base_topic):
             return
         
-        subtopic = topic[len(self._config.mqtt_topic):].lstrip('/')
+        subtopic = topic[len(base_topic):].lstrip('/')
         
         # Map MQTT to BLE command
         command = self._mapper.map_command(subtopic, payload)
@@ -50,30 +53,25 @@ class Coordinator:
                     for cmd in self._mapper.get_refresh_commands()[1:]:  # Skip first (already sent)
                         await self._ble.write(cmd)
                 
-                # Read-after-write: verify actual state from Wallbox
-                if subtopic.startswith("set/"):
-                    await self._read_after_write(subtopic)
+                # Optimistic state update / Read-after-write
+                # We want to read back values for limits
+                if subtopic == "limit":
+                    await self._read_after_write(subtopic, payload)
                     
             except Exception as e:
                 log.error(f"Failed to forward to BLE: {e}")
 
-    async def _read_after_write(self, subtopic: str):
+    async def _read_after_write(self, subtopic: str, payload: str):
         """Read actual value from Wallbox after writing."""
-        cmd = subtopic[4:]  # Remove "set/"
-        
-        # Map write commands to their corresponding read commands
         read_command = None
         
-        if cmd.endswith("_limit"):
-            limit_type = cmd.replace("_limit", "")
-            if limit_type == "user":
-                read_command = WALLBOX_EPROM["GET_USER_LIMIT"]
-            elif limit_type == "safe":
-                read_command = WALLBOX_EPROM["GET_SAFE_LIMIT"]
-            elif limit_type == "dpm":
-                read_command = WALLBOX_EPROM["GET_DPM_LIMIT"]
-        elif cmd == "dpm":
-            read_command = WALLBOX_EPROM["GET_DPM_STATUS"]
+        if subtopic == "limit":
+            if payload.startswith("user/"):
+                read_command = getUserLimit()
+            elif payload.startswith("safe/"):
+                read_command = getSafeLimit()
+            elif payload.startswith("dpm/"):
+                read_command = getDpmLimit()
         
         if read_command:
             log.info(f"Reading back state: {read_command.strip()}")
@@ -124,13 +122,6 @@ class Coordinator:
                         await self._mqtt.publish("number/safe_limit/state", str(value))
                     elif idx == "158":  # DPM limit (example, verify actual index)
                         await self._mqtt.publish("number/dpm_limit/state", str(value))
-            
-            elif data.startswith("$DPM,STATUS,"):
-                parts = data.split(",")
-                if len(parts) >= 3:
-                    status = parts[2].strip()
-                    state = "ON" if status == "1" else "OFF"
-                    await self._mqtt.publish("switch/dpm/state", state)
         
         except Exception as e:
             log.warning(f"Failed to parse response: {e}")

@@ -4,9 +4,10 @@ import logging
 from bleak import BleakClient, BleakError
 from typing import Callable, Optional
 from .config import Config
-from .const import (
+from .bluetoothCommands import (
     WALLBOX_RX, WALLBOX_TX, WALLBOX_ST, 
-    WALLBOX_BLE, WALLBOX_ANSWERS
+    WALLBOX_ANSWERS,
+    login
 )
 
 log = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ class BLEManager:
     async def _authenticate(self):
         """Perform protocol-level authentication."""
         log.info(f"Authenticating with PIN: {self._config.wallbox_pin}")
-        auth_cmd = WALLBOX_BLE["LOGIN"].format(pin=self._config.wallbox_pin)
+        auth_cmd = login(self._config.wallbox_pin)
         await self.write(auth_cmd)
 
     async def write(self, data: str | bytes):

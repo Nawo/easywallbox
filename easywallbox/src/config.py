@@ -13,7 +13,7 @@ class Config:
     mqtt_port: int
     mqtt_username: str
     mqtt_password: str
-    mqtt_topic: str
+    mqtt_password: str
 
 def get_required_env(key: str) -> str:
     """Get a required environment variable or raise ValueError."""
@@ -32,7 +32,6 @@ def load_config() -> Config:
             mqtt_port=int(get_required_env('MQTT_PORT')),
             mqtt_username=get_required_env('MQTT_USERNAME'),
             mqtt_password=get_required_env('MQTT_PASSWORD'),
-            mqtt_topic=get_required_env('MQTT_TOPIC'),
         )
         log.info("Configuration loaded successfully")
         return config

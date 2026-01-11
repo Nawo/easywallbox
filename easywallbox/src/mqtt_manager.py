@@ -33,12 +33,12 @@ class MQTTManager:
                     await self.publish_discovery()
                     
                     # Subscribe to topics
+                    base_topic = "easywallbox"
                     topics = [
-                        f"{self._config.mqtt_topic}/dpm",
-                        f"{self._config.mqtt_topic}/charge",
-                        f"{self._config.mqtt_topic}/limit",
-                        f"{self._config.mqtt_topic}/read",
-                        f"{self._config.mqtt_topic}/set/#", # Listen for HA commands
+                        f"{base_topic}/dpm",
+                        f"{base_topic}/charge",
+                        f"{base_topic}/limit",
+                        f"{base_topic}/read",
                     ]
                     for topic in topics:
                         await client.subscribe(topic)
@@ -76,7 +76,7 @@ class MQTTManager:
             "model": "EasyWallbox",
         }
         
-        base_topic = self._config.mqtt_topic
+        base_topic = "easywallbox"
         
         # Helper to publish config
         async def pub_config(component, object_id, config):
@@ -96,36 +96,64 @@ class MQTTManager:
             "unique_id": f"easywallbox_{self._config.wallbox_address}_connectivity",
             "device": device_info
         })
-
-        # 2. Limits (Numbers)
-        for limit in ["safe", "user"]:
-            await pub_config("number", f"{limit}_limit", {
-                "name": f"{limit.upper()} Limit",
-                "icon": "mdi:current-ac",
-                "state_topic": f"{base_topic}/number/{limit}_limit/state",
-                "command_topic": f"{base_topic}/set/{limit}_limit",
-                "min": 0,
-                "max": 7.2,
-                "step": 0.1,
-                "unit_of_measurement": "kW",
-                "unique_id": f"easywallbox_{self._config.wallbox_address}_{limit}_limit",
-                "device": device_info
-            })
         
-        # 3. Charging Control (Buttons)
-        await pub_config("button", "start_charge", {
-            "name": "Start Charging",
-            "icon": "mdi:ev-station",
-            "command_topic": f"{base_topic}/set/start_charge",
-            "unique_id": f"easywallbox_{self._config.wallbox_address}_start_charge",
+        # User Limit Number
+        await pub_config("number", "user_limit", {
+            "name": "User Current Limit",
+            "command_topic": f"{base_topic}/limit",
+            "state_topic": f"{base_topic}/number/user_limit/state",
+            "command_template": "user/{{ value }}",
+            "min": 6,
+            "max": 32,
+            "step": 1,
+            "unit_of_measurement": "A",
+            "icon": "mdi:current-ac",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_user_limit",
             "device": device_info
         })
         
+        # Safe Limit Number
+        await pub_config("number", "safe_limit", {
+            "name": "Safe Current Limit",
+            "command_topic": f"{base_topic}/limit",
+            "state_topic": f"{base_topic}/number/safe_limit/state",
+            "command_template": "safe/{{ value }}",
+            "min": 6,
+            "max": 32,
+            "step": 1,
+            "unit_of_measurement": "A",
+            "icon": "mdi:shield-check",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_safe_limit",
+            "device": device_info
+        })
+
+        # Start Charge Button
+        await pub_config("button", "start_charge", {
+            "name": "Start Charging",
+            "command_topic": f"{base_topic}/charge",
+            "payload_press": "start",
+            "icon": "mdi:ev-plug-type2",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_start_charge",
+            "device": device_info
+        })
+
+        # Stop Charge Button
         await pub_config("button", "stop_charge", {
             "name": "Stop Charging",
-            "icon": "mdi:stop-circle",
-            "command_topic": f"{base_topic}/set/stop_charge",
+            "command_topic": f"{base_topic}/charge",
+            "payload_press": "stop",
+            "icon": "mdi:ev-plug-type2-off",
             "unique_id": f"easywallbox_{self._config.wallbox_address}_stop_charge",
+            "device": device_info
+        })
+        
+        # Refresh Button
+        await pub_config("button", "refresh", {
+            "name": "Refresh Data",
+            "command_topic": f"{base_topic}/read",
+            "payload_press": "settings",
+            "icon": "mdi:refresh",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_refresh",
             "device": device_info
         })
         
@@ -135,7 +163,7 @@ class MQTTManager:
     async def publish(self, subtopic: str, payload: str):
         """Publish a message to MQTT."""
         if self._client:
-            full_topic = f"{self._config.mqtt_topic}/{subtopic}"
+            full_topic = f"easywallbox/{subtopic}"
             try:
                 await self._client.publish(full_topic, payload)
                 log.debug(f"Published to {full_topic}: {payload}")
