@@ -108,6 +108,9 @@ class Coordinator:
             # $DPM,STATUS,0          (DPM OFF)
             # $DPM,STATUS,1          (DPM ON)
             
+            # NOTE: EPROM indices below should be verified from actual Wallbox logs
+            # Check easywallbox/message topic for real responses
+            
             if data.startswith("$EEP,READ,IDX,"):
                 parts = data.split(",")
                 if len(parts) >= 5:
@@ -117,9 +120,9 @@ class Coordinator:
                     # Map index to entity
                     if idx == "174":  # User limit
                         await self._mqtt.publish("number/user_limit/state", str(value))
-                    elif idx == "172":  # Safe limit
+                    elif idx == "156":  # Safe limit
                         await self._mqtt.publish("number/safe_limit/state", str(value))
-                    elif idx == "156":  # DPM limit (example, verify actual index)
+                    elif idx == "158":  # DPM limit (example, verify actual index)
                         await self._mqtt.publish("number/dpm_limit/state", str(value))
             
             elif data.startswith("$DPM,STATUS,"):

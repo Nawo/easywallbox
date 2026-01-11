@@ -25,7 +25,6 @@ async def main():
 
     coordinator = Coordinator(config)
 
-
     # Handle signals
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
@@ -34,14 +33,12 @@ async def main():
         log.info("Signal received, stopping...")
         stop_event.set()
         coordinator.stop()
-        # web_server.stop() # handled by loop cleanup usually
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, signal_handler)
 
-    # Start coordinator and web server
+    # Start coordinator
     coordinator_task = asyncio.create_task(coordinator.start())
-
 
     # Wait for stop signal
     await stop_event.wait()

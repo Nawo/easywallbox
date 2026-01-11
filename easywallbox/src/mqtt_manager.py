@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import aiomqtt
-from typing import Callable, Optional, List, Tuple
+from typing import Callable, Optional
 from .config import Config
 
 log = logging.getLogger(__name__)

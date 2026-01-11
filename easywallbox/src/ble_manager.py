@@ -31,12 +31,16 @@ class BLEManager:
                 
                 await self._client.connect()
                 log.info(f"Connected to Wallbox: {self._client.is_connected}")
+
+                # Protocol Authentication (must be done before marking as online)
+                await self._authenticate()
                 
+                # Give authentication time to process
+                await asyncio.sleep(1)
+                
+                # Mark as online only after successful authentication
                 if self._on_connection_change_callback:
                     await self._on_connection_change_callback(True)
-
-                # Protocol Authentication
-                await self._authenticate()
 
                 # Start Notifications
                 await self._client.start_notify(WALLBOX_TX, self._notification_handler_rx)
@@ -84,27 +88,44 @@ class BLEManager:
         
         try:
             log.debug(f"Writing to BLE: {data}")
-            await self._client.write_gatt_char(WALLBOX_RX, data, response=True)
+            await self._client.write_gatt_char(WALLBOX_RX, data, response=False)
         except Exception as e:
             log.error(f"BLE Write Failed: {e}")
             raise
 
     def _notification_handler_rx(self, sender, data):
         """Handle RX notifications."""
-        self._notification_buffer_rx += data.decode()
+        try:
+            self._notification_buffer_rx += data.decode('utf-8')
+        except UnicodeDecodeError as e:
+            log.error(f"Failed to decode BLE data: {e}")
+            self._notification_buffer_rx = ""  # Discard corrupt data
+            return
+        
         if "\n" in self._notification_buffer_rx:
             log.debug(f"RX Notification: {self._notification_buffer_rx.strip()}")
             if self._on_notify_callback:
-                # We need to schedule this on the loop since callback might be async
-                # But here we are in a sync callback from bleak.
-                # Ideally, we should put it in a queue or use call_soon_threadsafe if cross-thread.
-                # Since bleak callbacks run in the loop, we can create a task.
-                asyncio.create_task(self._on_notify_callback(self._notification_buffer_rx))
+                # Schedule async callback and track exceptions
+                task = asyncio.create_task(self._on_notify_callback(self._notification_buffer_rx))
+                task.add_done_callback(self._handle_callback_exception)
             self._notification_buffer_rx = ""
+    
+    def _handle_callback_exception(self, task):
+        """Handle exceptions from notification callbacks."""
+        try:
+            task.result()
+        except Exception as e:
+            log.error(f"Error in notification callback: {e}", exc_info=True)
 
     def _notification_handler_st(self, sender, data):
         """Handle ST notifications."""
-        self._notification_buffer_st += data.decode()
+        try:
+            self._notification_buffer_st += data.decode('utf-8')
+        except UnicodeDecodeError as e:
+            log.error(f"Failed to decode ST data: {e}")
+            self._notification_buffer_st = ""
+            return
+        
         if "\n" in self._notification_buffer_st:
             log.debug(f"ST Notification: {self._notification_buffer_st.strip()}")
             # Currently we don't do anything with ST notifications other than log
