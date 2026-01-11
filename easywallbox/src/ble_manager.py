@@ -32,21 +32,21 @@ class BLEManager:
                 await self._client.connect()
                 log.info(f"Connected to Wallbox: {self._client.is_connected}")
 
-                # Protocol Authentication (must be done before marking as online)
-                await self._authenticate()
-                
-                # Give authentication time to process
-                await asyncio.sleep(1)
-                
-                # Mark as online only after successful authentication
-                if self._on_connection_change_callback:
-                    await self._on_connection_change_callback(True)
-
-                # Start Notifications
+                # Start Notifications BEFORE auth to receive auth response
                 await self._client.start_notify(WALLBOX_TX, self._notification_handler_rx)
                 log.info("TX NOTIFY STARTED")
                 await self._client.start_notify(WALLBOX_ST, self._notification_handler_st)
                 log.info("ST NOTIFY STARTED")
+
+                # Protocol Authentication
+                await self._authenticate()
+                
+                # Give authentication time to process (Wallbox may send response)
+                await asyncio.sleep(2)
+                
+                # Mark as online only after successful authentication
+                if self._on_connection_change_callback:
+                    await self._on_connection_change_callback(True)
 
                 # Monitor connection
                 while self._running and self._client.is_connected:
