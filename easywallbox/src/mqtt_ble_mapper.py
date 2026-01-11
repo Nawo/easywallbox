@@ -9,7 +9,7 @@ from .bluetoothCommands import (
     setUserLimit, getUserLimit,
     setSafeLimit, getSafeLimit,
     setDpmLimit, getDpmLimit,
-    setDpmOn, setDpmOff, getDpmStatus,
+    setDpmLimit, getDpmLimit,
     startCharge, stopCharge,
     readSettings, readAppData,
     readManufacturing, readHwSettings, readSupplyVoltage
@@ -80,10 +80,6 @@ class MQTTBLEMapper:
                             except ValueError:
                                 pass
                 
-                # D) Handle HA Button "PRESS" (default action)
-                if "PRESS" in topic_map: # Fallback for buttons
-                     return topic_map["PRESS"]
-
             return None
             
         except Exception as e:
@@ -100,5 +96,11 @@ class MQTTBLEMapper:
         """Get all commands for refresh operation."""
         return [
             readSettings(),
-            readAppData()
+            readAppData(),
+            readManufacturing(),
+            readHwSettings(),
+            readSupplyVoltage(),
+            getDpmLimit(),
+            getSafeLimit(),
+            getUserLimit()
         ]

@@ -6,7 +6,7 @@ from .mqtt_manager import MQTTManager
 from .ble_manager import BLEManager
 from .mqtt_ble_mapper import MQTTBLEMapper
 from .bluetoothCommands import (
-    getUserLimit, getSafeLimit, getDpmLimit, getDpmStatus
+    getUserLimit, getSafeLimit
 )
 
 log = logging.getLogger(__name__)
@@ -70,8 +70,6 @@ class Coordinator:
                 read_command = getUserLimit()
             elif payload.startswith("safe/"):
                 read_command = getSafeLimit()
-            elif payload.startswith("dpm/"):
-                read_command = getDpmLimit()
         
         if read_command:
             log.info(f"Reading back state: {read_command.strip()}")
@@ -103,8 +101,6 @@ class Coordinator:
             # Example responses:
             # $EEP,READ,IDX,174,160  (User limit = 16.0A)
             # $EEP,READ,IDX,172,320  (Safe limit = 32.0A)
-            # $DPM,STATUS,0          (DPM OFF)
-            # $DPM,STATUS,1          (DPM ON)
             
             # NOTE: EPROM indices below should be verified from actual Wallbox logs
             # Check easywallbox/message topic for real responses
@@ -120,8 +116,6 @@ class Coordinator:
                         await self._mqtt.publish("number/user_limit/state", str(value))
                     elif idx == "156":  # Safe limit
                         await self._mqtt.publish("number/safe_limit/state", str(value))
-                    elif idx == "158":  # DPM limit (example, verify actual index)
-                        await self._mqtt.publish("number/dpm_limit/state", str(value))
         
         except Exception as e:
             log.warning(f"Failed to parse response: {e}")

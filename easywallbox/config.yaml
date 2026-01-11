@@ -1,7 +1,7 @@
 name: "EasyWallbox"
 description: "Free2Move Wallbox Integration"
 author: "Roman Nawrot"
-version: "1.1.1"
+version: "1.1.2"
 slug: "easywallbox"
 init: false
 arch:
@@ -17,7 +17,6 @@ options:
   mqtt_port: 1883
   mqtt_username: ""
   mqtt_password: ""
-  mqtt_topic: "easywallbox"
 schema:
   wallbox_address: str
   wallbox_pin: str
@@ -25,7 +24,6 @@ schema:
   mqtt_port: int
   mqtt_username: str
   mqtt_password: str
-  mqtt_topic: str
 host_network: true
 privileged:
   - NET_ADMIN
