@@ -151,9 +151,18 @@ class MQTTManager:
         await pub_config("button", "refresh", {
             "name": "Refresh Data",
             "command_topic": f"{base_topic}/read",
-            "payload_press": "settings",
+            "payload_press": "voltage",
             "icon": "mdi:refresh",
             "unique_id": f"easywallbox_{self._config.wallbox_address}_refresh",
+            "device": device_info
+        })
+
+        await pub_config("button", "voltage", {
+            "name": "Voltage",
+            "command_topic": f"{base_topic}/read",
+            "payload_press": "voltage",
+            "icon": "mdi:current-ac",
+            "unique_id": f"easywallbox_{self._config.wallbox_address}_voltage",
             "device": device_info
         })
         

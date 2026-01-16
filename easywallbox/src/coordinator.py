@@ -49,14 +49,15 @@ class Coordinator:
                 await self._ble.write(command)
                 
                 # Handle refresh (requires multiple commands)
-                if self._mapper.needs_multiple_commands(subtopic, payload):
-                    for cmd in self._mapper.get_refresh_commands()[1:]:  # Skip first (already sent)
-                        await self._ble.write(cmd)
+                # if self._mapper.needs_multiple_commands(subtopic, payload):
+                #     for cmd in self._mapper.get_refresh_commands()[1:]:  # Skip first (already sent)
+                #         log.info(f"Forwarding to BLE: {cmd.strip()}")
+                #         await self._ble.write(cmd)
                 
-                # Optimistic state update / Read-after-write
-                # We want to read back values for limits
-                if subtopic == "limit":
-                    await self._read_after_write(subtopic, payload)
+                # # Optimistic state update / Read-after-write
+                # # We want to read back values for limits
+                # if subtopic == "limit":
+                #     await self._read_after_write(subtopic, payload)
                     
             except Exception as e:
                 log.error(f"Failed to forward to BLE: {e}")
