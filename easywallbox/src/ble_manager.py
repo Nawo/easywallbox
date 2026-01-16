@@ -40,6 +40,8 @@ class BLEManager:
                 log.info("ST NOTIFY STARTED")
 
                 # Protocol Authentication
+                log.info("Waiting 1s before authentication...")
+                await asyncio.sleep(1)
                 await self._authenticate()
                 
                 # Give authentication time to process (Wallbox may send response)
@@ -53,6 +55,8 @@ class BLEManager:
                 while self._running and self._client.is_connected:
                     await asyncio.sleep(1)
 
+            except asyncio.TimeoutError:
+                log.error("BLE Operation Timed Out")
             except BleakError as e:
                 log.error(f"BLE Connection error: {e}")
             except Exception as e:
@@ -77,6 +81,7 @@ class BLEManager:
         log.info(f"Authenticating with PIN: {self._config.wallbox_pin}")
         auth_cmd = login(self._config.wallbox_pin)
         await self.write(auth_cmd)
+        log.info("Authentication command sent")
 
     async def write(self, data: str | bytes):
         """Write data to the Wallbox."""
@@ -89,7 +94,12 @@ class BLEManager:
         
         try:
             log.debug(f"Writing to BLE: {data}")
-            await self._client.write_gatt_char(WALLBOX_RX, data, response=False)
+            # Add timeout to prevent hanging
+            async with asyncio.timeout(5.0):
+                await self._client.write_gatt_char(WALLBOX_RX, data, response=False)
+        except asyncio.TimeoutError:
+            log.error("BLE Write Timed Out")
+            raise
         except Exception as e:
             log.error(f"BLE Write Failed: {e}")
             raise
@@ -97,7 +107,9 @@ class BLEManager:
     def _notification_handler_rx(self, sender, data):
         """Handle RX notifications."""
         try:
-            self._notification_buffer_rx += data.decode('utf-8')
+            decoded = data.decode('utf-8')
+            log.debug(f"RAW RX DATA: {repr(decoded)}")
+            self._notification_buffer_rx += decoded
         except UnicodeDecodeError as e:
             log.error(f"Failed to decode BLE data: {e}")
             self._notification_buffer_rx = ""  # Discard corrupt data
